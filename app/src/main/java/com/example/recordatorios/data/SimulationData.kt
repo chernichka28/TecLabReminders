@@ -1,10 +1,13 @@
-package com.example.recordatorios.sample
+package com.example.recordatorios.data
 
 import androidx.compose.ui.graphics.Color
 import com.example.recordatorios.domain.Category
 import com.example.recordatorios.domain.Priority
 import com.example.recordatorios.domain.Reminder
 import com.example.recordatorios.domain.ReminderState
+
+const val SIMULATE_LOAD_ERROR = false
+const val SIMULATE_SAVE_ERROR = false
 
 val categories = setOf(
     Category(1L, "Leer"),
@@ -13,9 +16,9 @@ val categories = setOf(
 )
 
 val categoriesColorMapping = mapOf(
-    1L to Color(0xFFBBDEFB), // azul suave
-    2L to Color(0xFFC8E6C9), // verde suave
-    3L to Color(0xFFFFF9C4), // amarillo suave
+    1L to Color(0xFFBBDEFB),
+    2L to Color(0xFFC8E6C9),
+    3L to Color(0xFFFFF9C4),
 )
 
 val reminders = listOf(
