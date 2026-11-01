@@ -1,19 +1,21 @@
 package com.example.recordatorios.ui.create
 
+import android.database.sqlite.SQLiteException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.recordatorios.data.InMemoryReminderRepository
+import com.example.recordatorios.data.AppContainer
 import com.example.recordatorios.data.ReminderRepository
 import com.example.recordatorios.domain.Category
 import com.example.recordatorios.domain.Priority
 import com.example.recordatorios.domain.Reminder
 import com.example.recordatorios.domain.ReminderState
+import com.example.recordatorios.domain.SyncStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.IOException
+import java.util.UUID
 
 sealed interface SaveState {
     data object Editing : SaveState
@@ -43,7 +45,7 @@ data class CreateUiState(
 }
 
 class CreateViewModel(
-    private val repository: ReminderRepository = InMemoryReminderRepository
+    private val repository: ReminderRepository = AppContainer.reminders
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CreateUiState(categories = repository.getCategories()))
@@ -67,17 +69,19 @@ class CreateViewModel(
             try {
                 repository.save(
                     Reminder(
-                        id = 0,
+                        id = UUID.randomUUID().toString(),
                         title = form.title.trim(),
                         description = form.description.ifBlank { null },
                         state = ReminderState.Waiting,
                         category = form.categories.first { it.id == form.categoryId },
-                        priority = priority
+                        priority = priority,
+                        date = System.currentTimeMillis(),
+                        syncStatus = SyncStatus.PENDING
                     )
                 )
                 _uiState.update { it.copy(saveState = SaveState.Success) }
-            } catch (e: IOException) {
-                _uiState.update { it.copy(saveState = SaveState.Error(e.message ?: "Error al guardar")) }
+            } catch (e: SQLiteException) {
+                _uiState.update { it.copy(saveState = SaveState.Error("No se pudo guardar el recordatorio")) }
             }
         }
     }

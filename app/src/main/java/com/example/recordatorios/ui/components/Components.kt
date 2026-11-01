@@ -27,6 +27,7 @@ import com.example.recordatorios.domain.Priority
 import com.example.recordatorios.domain.Reminder
 import com.example.recordatorios.domain.priorityLabel
 import com.example.recordatorios.domain.stateLabel
+import com.example.recordatorios.domain.syncLabel
 
 @Composable
 fun ReminderCard(
@@ -48,6 +49,7 @@ fun ReminderCard(
             Text("Categoría: ${reminder.category.title}")
             Text("Prioridad: ${priorityLabel(reminder.priority)}")
             Text("Estado: ${stateLabel(reminder.state)}")
+            Text(syncLabel(reminder.syncStatus), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

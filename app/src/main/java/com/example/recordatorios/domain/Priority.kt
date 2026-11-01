@@ -15,3 +15,10 @@ fun priorityLabel(priority: Priority): String =
         Priority.Medium -> "Media"
         Priority.Low -> "Baja"
     }
+
+fun priorityOrder(priority: Priority): Int =
+    when (priority) {
+        Priority.High -> 0
+        Priority.Medium -> 1
+        Priority.Low -> 2
+    }

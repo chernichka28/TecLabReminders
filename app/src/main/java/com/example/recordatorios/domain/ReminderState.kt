@@ -8,9 +8,6 @@ sealed class ReminderState {
     data class Done(
         val finishDate: String
     ) : ReminderState()
-    data class Error(
-        val message: String
-    ) : ReminderState()
 }
 
 fun stateLabel(state: ReminderState): String =
@@ -18,5 +15,4 @@ fun stateLabel(state: ReminderState): String =
         ReminderState.Waiting -> "Pendiente"
         ReminderState.InProgress -> "En progreso"
         is ReminderState.Done -> "Completado (${state.finishDate})"
-        is ReminderState.Error -> "Error: ${state.message}"
     }

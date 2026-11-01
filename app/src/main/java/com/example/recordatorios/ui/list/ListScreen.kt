@@ -1,6 +1,7 @@
 package com.example.recordatorios.ui.list
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -11,9 +12,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -28,42 +29,52 @@ import com.example.recordatorios.ui.components.StatusMessage
 @Composable
 fun ListScreen(
     onCrearRecordatorio: () -> Unit,
-    onRecordatorioClick: (Long) -> Unit,
+    onRecordatorioClick: (String) -> Unit,
+    onAjustes: () -> Unit,
     viewModel: ListViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-
-    LaunchedEffect(Unit) { viewModel.load() }
+    val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Recordatorios") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Recordatorios") },
+                actions = {
+                    TextButton(onClick = viewModel::synchronize) { Text("Sincronizar") }
+                    TextButton(onClick = onAjustes) { Text("Ajustes") }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = onCrearRecordatorio) {
                 Icon(painterResource(R.drawable.ic_add), contentDescription = "Crear recordatorio")
             }
         }
     ) { innerPadding ->
-        val modifier = Modifier
-            .padding(innerPadding)
-            .fillMaxSize()
+        Column(modifier = Modifier.padding(innerPadding)) {
+            syncMessage?.let { Text(it, modifier = Modifier.padding(16.dp)) }
 
-        when (val state = uiState) {
-            ListUiState.Loading -> StatusMessage("Cargando…", modifier, loading = true)
-            ListUiState.Empty -> StatusMessage(
-                "Todavía no existen recordatorios", modifier,
-                actionLabel = "Crear recordatorio", onAction = onCrearRecordatorio
-            )
-            is ListUiState.Error -> StatusMessage(
-                state.message, modifier,
-                actionLabel = "Reintentar", onAction = viewModel::load
-            )
-            is ListUiState.Success -> LazyColumn(
-                modifier = modifier,
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(state.reminders, key = { it.id }) { reminder ->
-                    ReminderCard(reminder, onClick = { onRecordatorioClick(reminder.id) })
+            val modifier = Modifier.fillMaxSize()
+
+            when (val state = uiState) {
+                ListUiState.Loading -> StatusMessage("Cargando…", modifier, loading = true)
+                ListUiState.Empty -> StatusMessage(
+                    "Todavía no existen recordatorios", modifier,
+                    actionLabel = "Crear recordatorio", onAction = onCrearRecordatorio
+                )
+                is ListUiState.Error -> StatusMessage(
+                    state.message, modifier,
+                    actionLabel = "Reintentar", onAction = viewModel::load
+                )
+                is ListUiState.Success -> LazyColumn(
+                    modifier = modifier,
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(state.reminders, key = { it.id }) { reminder ->
+                        ReminderCard(reminder, onClick = { onRecordatorioClick(reminder.id) })
+                    }
                 }
             }
         }
