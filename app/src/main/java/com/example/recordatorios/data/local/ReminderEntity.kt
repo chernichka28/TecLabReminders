@@ -7,7 +7,7 @@ import com.example.recordatorios.domain.SyncStatus
 @Entity(tableName = "reminders")
 data class ReminderEntity(
     @PrimaryKey val id: String,
-    val remoteId: String?,
+    val userId: String,
     val title: String,
     val description: String?,
     val categoryId: Long,

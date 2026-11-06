@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -28,6 +29,7 @@ import com.example.recordatorios.domain.ReminderOrder
 @Composable
 fun SettingsScreen(
     onVolver: () -> Unit,
+    onCerrarSesion: () -> Unit,
     viewModel: SettingsViewModel = viewModel()
 ) {
     val preferences by viewModel.preferences.collectAsStateWithLifecycle()
@@ -66,6 +68,8 @@ fun SettingsScreen(
                 )
                 Text("Prioridad")
             }
+
+            OutlinedButton(onClick = onCerrarSesion) { Text("Cerrar sesión") }
         }
     }
 }

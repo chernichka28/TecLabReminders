@@ -1,11 +1,11 @@
 package com.example.recordatorios.data
 
 import com.example.recordatorios.data.local.ReminderEntity
-import com.example.recordatorios.data.remote.ReminderDto
 import com.example.recordatorios.domain.Priority
 import com.example.recordatorios.domain.Reminder
 import com.example.recordatorios.domain.ReminderState
 import com.example.recordatorios.domain.SyncStatus
+import com.google.firebase.firestore.DocumentSnapshot
 
 private fun Priority.toCode(): String =
     when (this) {
@@ -47,10 +47,10 @@ fun ReminderEntity.toDomain(): Reminder =
         syncStatus = syncStatus
     )
 
-fun Reminder.toEntity(remoteId: String?, updatedAt: Long, syncStatus: SyncStatus): ReminderEntity =
+fun Reminder.toEntity(userId: String, updatedAt: Long, syncStatus: SyncStatus): ReminderEntity =
     ReminderEntity(
         id = id,
-        remoteId = remoteId,
+        userId = userId,
         title = title,
         description = description,
         categoryId = category.id,
@@ -62,31 +62,30 @@ fun Reminder.toEntity(remoteId: String?, updatedAt: Long, syncStatus: SyncStatus
         syncStatus = syncStatus
     )
 
-fun ReminderEntity.toDto(): ReminderDto =
-    ReminderDto(
-        id = remoteId,
-        localId = id,
-        title = title,
-        description = description,
-        categoryId = categoryId,
-        priority = priority,
-        state = state,
-        finishDate = finishDate,
-        date = date,
-        updatedAt = updatedAt
+fun ReminderEntity.toCloud(): Map<String, Any?> =
+    mapOf(
+        "id" to id,
+        "title" to title,
+        "description" to description,
+        "categoryId" to categoryId,
+        "priority" to priority,
+        "state" to state,
+        "finishDate" to finishDate,
+        "date" to date,
+        "updatedAt" to updatedAt
     )
 
-fun ReminderDto.toEntity(): ReminderEntity =
+fun DocumentSnapshot.toEntity(userId: String): ReminderEntity =
     ReminderEntity(
-        id = localId,
-        remoteId = id,
-        title = title,
-        description = description,
-        categoryId = categoryId,
-        priority = priority,
-        state = state,
-        finishDate = finishDate,
-        date = date,
-        updatedAt = updatedAt,
+        id = id,
+        userId = userId,
+        title = getString("title") ?: "",
+        description = getString("description"),
+        categoryId = getLong("categoryId") ?: 1L,
+        priority = getString("priority") ?: "MEDIUM",
+        state = getString("state") ?: "WAITING",
+        finishDate = getString("finishDate"),
+        date = getLong("date") ?: 0L,
+        updatedAt = getLong("updatedAt") ?: 0L,
         syncStatus = SyncStatus.SYNCED
     )

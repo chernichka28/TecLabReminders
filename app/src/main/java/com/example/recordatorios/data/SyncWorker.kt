@@ -19,8 +19,8 @@ class SyncWorker(
     override suspend fun doWork(): Result =
         when (AppContainer.reminders.synchronize()) {
             SyncResult.Success -> Result.success()
-            SyncResult.NoConnection, SyncResult.Timeout, is SyncResult.ServerError -> Result.retry()
-            is SyncResult.InvalidRequest, SyncResult.InvalidData, SyncResult.StorageError -> Result.failure()
+            SyncResult.NoConnection, SyncResult.Timeout, SyncResult.ServerError -> Result.retry()
+            SyncResult.PermissionDenied, SyncResult.StorageError, SyncResult.SignedOut -> Result.failure()
         }
 }
 

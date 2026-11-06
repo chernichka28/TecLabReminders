@@ -1,10 +1,19 @@
 package com.example.recordatorios.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.example.recordatorios.ui.auth.AuthUiState
+import com.example.recordatorios.ui.auth.AuthViewModel
+import com.example.recordatorios.ui.auth.LoginScreen
+import com.example.recordatorios.ui.components.StatusMessage
 import com.example.recordatorios.ui.create.CreateScreen
 import com.example.recordatorios.ui.detail.DetailScreen
 import com.example.recordatorios.ui.list.ListScreen
@@ -17,7 +26,22 @@ import kotlinx.serialization.Serializable
 @Serializable data class DetalleRoute(val id: String)
 
 @Composable
-fun AppNavHost() {
+fun AppNavHost(authViewModel: AuthViewModel = viewModel()) {
+    val authState by authViewModel.uiState.collectAsStateWithLifecycle()
+
+    when (val state = authState) {
+        AuthUiState.Checking -> StatusMessage("Cargando…", Modifier.fillMaxSize(), loading = true)
+        AuthUiState.SignedIn -> RemindersNavHost(onCerrarSesion = authViewModel::signOut)
+        else -> LoginScreen(
+            uiState = state,
+            onIngresar = authViewModel::signIn,
+            onRegistrarse = authViewModel::register
+        )
+    }
+}
+
+@Composable
+private fun RemindersNavHost(onCerrarSesion: () -> Unit) {
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = ListaRoute) {
@@ -42,7 +66,10 @@ fun AppNavHost() {
             )
         }
         composable<AjustesRoute> {
-            SettingsScreen(onVolver = { navController.popBackStack() })
+            SettingsScreen(
+                onVolver = { navController.popBackStack() },
+                onCerrarSesion = onCerrarSesion
+            )
         }
     }
 }

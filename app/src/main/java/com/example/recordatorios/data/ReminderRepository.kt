@@ -3,31 +3,32 @@ package com.example.recordatorios.data
 import android.database.sqlite.SQLiteException
 import com.example.recordatorios.data.local.ReminderDao
 import com.example.recordatorios.data.local.ReminderEntity
-import com.example.recordatorios.data.remote.ReminderApiService
+import com.example.recordatorios.data.remote.FirestoreReminderDataSource
 import com.example.recordatorios.domain.Category
 import com.example.recordatorios.domain.Reminder
 import com.example.recordatorios.domain.ReminderOrder
 import com.example.recordatorios.domain.SyncStatus
 import com.example.recordatorios.domain.priorityOrder
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.SerializationException
-import retrofit2.HttpException
-import java.io.IOException
-import java.net.SocketTimeoutException
+import kotlinx.coroutines.withTimeout
 
 sealed interface SyncResult {
     data object Success : SyncResult
     data object NoConnection : SyncResult
     data object Timeout : SyncResult
-    data class InvalidRequest(val code: Int) : SyncResult
-    data class ServerError(val code: Int) : SyncResult
-    data object InvalidData : SyncResult
+    data object PermissionDenied : SyncResult
+    data object ServerError : SyncResult
     data object StorageError : SyncResult
+    data object SignedOut : SyncResult
 }
 
 fun syncResultMessage(result: SyncResult): String =
@@ -35,10 +36,10 @@ fun syncResultMessage(result: SyncResult): String =
         SyncResult.Success -> "Sincronización completa"
         SyncResult.NoConnection -> "Sin conexión. Los cambios se sincronizarán más tarde."
         SyncResult.Timeout -> "El servidor no respondió a tiempo. Volvé a intentarlo."
-        is SyncResult.InvalidRequest -> "El servidor rechazó la solicitud (${result.code})."
-        is SyncResult.ServerError -> "Error del servidor (${result.code}). Volvé a intentarlo."
-        SyncResult.InvalidData -> "El servidor envió datos inválidos."
+        SyncResult.PermissionDenied -> "No tenés permiso para acceder a estos datos."
+        SyncResult.ServerError -> "Error del servidor. Volvé a intentarlo."
         SyncResult.StorageError -> "No se pudo guardar en el dispositivo."
+        SyncResult.SignedOut -> "Iniciá sesión para sincronizar."
     }
 
 interface ReminderRepository {
@@ -52,7 +53,8 @@ interface ReminderRepository {
 
 class LocalFirstReminderRepository(
     private val dao: ReminderDao,
-    private val api: ReminderApiService,
+    private val remote: FirestoreReminderDataSource,
+    private val auth: AuthRepository,
     private val preferences: UserPreferencesRepository,
     private val onChanged: () -> Unit
 ) : ReminderRepository {
@@ -61,83 +63,81 @@ class LocalFirstReminderRepository(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeReminders(): Flow<List<Reminder>> =
-        preferences.preferences.flatMapLatest { prefs ->
-            val source = if (prefs.showCompleted) dao.observeAll() else dao.observeNotCompleted()
-            source.map { list ->
-                val reminders = list.map { it.toDomain() }
-                if (prefs.reminderOrder == ReminderOrder.BY_PRIORITY) {
-                    reminders.sortedBy { priorityOrder(it.priority) }
-                } else {
-                    reminders
+        combine(auth.userId, preferences.preferences) { userId, prefs -> userId to prefs }
+            .flatMapLatest { (userId, prefs) ->
+                if (userId == null) return@flatMapLatest flowOf(emptyList())
+                val source = if (prefs.showCompleted) dao.observeAll(userId) else dao.observeNotCompleted(userId)
+                source.map { list ->
+                    val reminders = list.map { it.toDomain() }
+                    if (prefs.reminderOrder == ReminderOrder.BY_PRIORITY) {
+                        reminders.sortedBy { priorityOrder(it.priority) }
+                    } else {
+                        reminders
+                    }
                 }
             }
-        }
 
-    override fun observeReminder(id: String): Flow<Reminder?> =
-        dao.observeById(id).map { it?.toDomain() }
+    override fun observeReminder(id: String): Flow<Reminder?> {
+        val userId = auth.currentUserId ?: return flowOf(null)
+        return dao.observeById(id, userId).map { it?.toDomain() }
+    }
 
     override suspend fun save(reminder: Reminder) {
-        val remoteId = dao.findById(reminder.id)?.remoteId
-        dao.save(reminder.toEntity(remoteId, System.currentTimeMillis(), SyncStatus.PENDING))
+        val userId = auth.currentUserId ?: return
+        dao.save(reminder.toEntity(userId, System.currentTimeMillis(), SyncStatus.PENDING))
         onChanged()
     }
 
     override suspend fun delete(id: String) {
-        val reminder = dao.findById(id) ?: return
+        val userId = auth.currentUserId ?: return
+        val reminder = dao.findById(id, userId) ?: return
         dao.save(reminder.copy(updatedAt = System.currentTimeMillis(), syncStatus = SyncStatus.PENDING_DELETE))
         onChanged()
     }
 
     override suspend fun synchronize(): SyncResult = syncMutex.withLock {
+        val userId = auth.currentUserId ?: return SyncResult.SignedOut
         try {
-            downloadChanges()
-            dao.findNotSynced().forEach { upload(it) }
+            withTimeout(15_000) {
+                downloadChanges(userId)
+                dao.findNotSynced(userId).forEach { upload(it) }
+            }
             SyncResult.Success
-        } catch (e: SocketTimeoutException) {
+        } catch (e: TimeoutCancellationException) {
             SyncResult.Timeout
-        } catch (e: IOException) {
-            SyncResult.NoConnection
-        } catch (e: HttpException) {
-            if (e.code() >= 500) SyncResult.ServerError(e.code()) else SyncResult.InvalidRequest(e.code())
-        } catch (e: SerializationException) {
-            SyncResult.InvalidData
+        } catch (e: FirebaseFirestoreException) {
+            when (e.code) {
+                FirebaseFirestoreException.Code.UNAVAILABLE -> SyncResult.NoConnection
+                FirebaseFirestoreException.Code.PERMISSION_DENIED,
+                FirebaseFirestoreException.Code.UNAUTHENTICATED -> SyncResult.PermissionDenied
+                else -> SyncResult.ServerError
+            }
         } catch (e: SQLiteException) {
             SyncResult.StorageError
         }
     }
 
-    private suspend fun downloadChanges() {
-        api.getReminders().forEach { dto ->
-            val local = dao.findById(dto.localId)
-            if (local == null || dto.updatedAt > local.updatedAt) {
-                dao.save(dto.toEntity())
-            } else if (local.remoteId == null) {
-                dao.saveRemoteId(local.id, dto.id)
+    private suspend fun downloadChanges(userId: String) {
+        remote.getReminders(userId).forEach { document ->
+            val cloud = document.toEntity(userId)
+            val local = dao.findById(cloud.id, userId)
+            if (local == null || cloud.updatedAt > local.updatedAt) {
+                dao.save(cloud)
             }
         }
     }
 
     private suspend fun upload(reminder: ReminderEntity) {
-        val remoteId = reminder.remoteId
         try {
             if (reminder.syncStatus == SyncStatus.PENDING_DELETE) {
-                if (remoteId != null) api.deleteReminder(remoteId)
+                remote.deleteReminder(reminder.userId, reminder.id)
                 dao.delete(reminder.id)
-            } else if (remoteId == null) {
-                val created = api.createReminder(reminder.toDto())
-                dao.saveRemoteId(reminder.id, created.id)
-                dao.markSynced(reminder.id, reminder.updatedAt)
             } else {
-                api.updateReminder(remoteId, reminder.toDto())
+                remote.saveReminder(reminder.userId, reminder.id, reminder.toCloud())
                 dao.markSynced(reminder.id, reminder.updatedAt)
             }
-        } catch (e: HttpException) {
-            if (reminder.syncStatus != SyncStatus.PENDING_DELETE) {
-                dao.markError(reminder.id)
-            } else if (e.code() == 404) {
-                dao.delete(reminder.id)
-                return
-            }
+        } catch (e: FirebaseFirestoreException) {
+            if (reminder.syncStatus != SyncStatus.PENDING_DELETE) dao.markError(reminder.id)
             throw e
         }
     }
